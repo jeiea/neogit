@@ -49,9 +49,11 @@ function M.range(popup)
     commit = item and item.name
   end
 
+  local current = git.branch.current() or "HEAD"
+  local context = commit and { commit, current } or { current }
   local options = util.deduplicate(
     util.merge(
-      { commit, git.branch.current() or "HEAD" },
+      context,
       git.branch.get_all_branches(false),
       git.tag.list(),
       git.refs.heads()
