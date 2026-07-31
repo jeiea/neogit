@@ -126,31 +126,38 @@ end
 ---@param on_select fun(item: any|nil)
 ---@param allow_multi boolean
 ---@param refocus_status boolean
+---@return table actions, function abort
 local function fzf_actions(on_select, allow_multi, refocus_status)
-  local function refresh()
+  local completed = false
+  local function complete(selection)
+    if completed then
+      return
+    end
+    completed = true
+    on_select(selection)
     if refocus_status then
       refocus_status_buffer()
     end
   end
 
   local function close_action()
-    on_select(nil)
-    refresh()
+    complete(nil)
   end
 
-  return {
+  local actions = {
     ["default"] = function(selected)
       if allow_multi then
-        on_select(selected)
+        complete(selected)
       else
-        on_select(selected[1])
+        complete(selected[1])
       end
-      refresh()
     end,
     ["esc"] = close_action,
     ["ctrl-c"] = close_action,
     ["ctrl-q"] = close_action,
   }
+
+  return actions, close_action
 end
 
 ---Convert entries to snack picker items
@@ -368,15 +375,27 @@ function Finder:find(on_select)
       :find()
   elseif config.check_integration("fzf_lua") then
     local fzf_lua = require("fzf-lua")
-    fzf_lua.fzf_exec(self.entries, {
+    local actions, abort = fzf_actions(on_select, self.opts.allow_multi, self.opts.refocus_status)
+    local fzf_coroutine
+    local function on_close()
+      vim.schedule(function()
+        -- fzf-lua can abort without invoking an action, so complete from on_close.
+        -- Hiding also invokes on_close, so wait until the picker coroutine has exited.
+        if not fzf_coroutine or coroutine.status(fzf_coroutine) == "dead" then
+          abort()
+        end
+      end)
+    end
+    fzf_coroutine = fzf_lua.fzf_exec(self.entries, {
       prompt = string.format("%s> ", self.opts.prompt_prefix),
       fzf_opts = fzf_opts(self.opts),
       winopts = {
         height = self.opts.layout_config.height,
         border = self.opts.border,
         preview = { border = self.opts.border },
+        on_close = on_close,
       },
-      actions = fzf_actions(on_select, self.opts.allow_multi, self.opts.refocus_status),
+      actions = actions,
     })
   elseif config.check_integration("mini_pick") then
     local mini_pick = require("mini.pick")
