@@ -22,6 +22,13 @@ M.__index = M
 
 local instances = {}
 
+-- The status window lcd's into a symlinked cwd, so lookups from it see the resolved path.
+---@param dir string
+---@return string
+local function instance_key(dir)
+  return vim.fs.normalize(vim.uv.fs_realpath(dir) or dir)
+end
+
 ---@class SubmoduleInfo
 ---@field submodules string[] A list with the relative paths to the project's submodules
 ---@field parent_repo string? If we are in a submodule, cache the abs path to the parent repo
@@ -60,7 +67,7 @@ end
 ---@param instance StatusBuffer
 ---@param dir string
 function M.register(instance, dir)
-  local dir = vim.fs.normalize(dir)
+  local dir = instance_key(dir)
   logger.debug("[STATUS] Registering instance for: " .. dir)
 
   instances[dir] = instance
@@ -76,7 +83,7 @@ function M.instance(dir)
   local dir = dir or vim.uv.cwd()
   assert(dir, "cannot locate a status buffer with no cwd")
 
-  return instances[vim.fs.normalize(dir)]
+  return instances[instance_key(dir)]
 end
 
 ---@param config NeogitConfig
